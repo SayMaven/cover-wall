@@ -1,0 +1,79 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<!--
+  Fixed UpgradeCode GUID ensures Windows Installer recognizes future releases
+  as upgrades rather than duplicate installations.
+-->
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+  <Product
+    Id='*'
+    Name='Cover Wall Studio'
+    UpgradeCode='0976DCF3-4778-4906-8019-E7D3D369622D'
+    Manufacturer='SayMaven'
+    Language='1033'
+    Codepage='1252'
+    Version='$(var.Version)'>
+
+    <Package
+      Id='*'
+      Keywords='Installer'
+      Description='Pure Rust album cover extractor and 4K wallpaper studio'
+      Manufacturer='SayMaven'
+      InstallerVersion='450'
+      Languages='1033'
+      Compressed='yes'
+      SummaryCodepage='1252'/>
+
+    <MajorUpgrade
+      Schedule='afterInstallInitialize'
+      DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+
+    <MediaTemplate EmbedCab='yes'/>
+
+    <Directory Id='TARGETDIR' Name='SourceDir'>
+      <Directory Id='ProgramFiles64Folder' Name='PFiles'>
+        <Directory Id='APPLICATIONFOLDER' Name='Cover Wall Studio'>
+          <Component Id='MainExecutable' Guid='*' Win64='yes'>
+            <File
+              Id='CoverWallExe'
+              Name='cover-wall.exe'
+              DiskId='1'
+              Source='$(var.CargoTargetBinDir)\cover-wall.exe'
+              KeyPath='yes'/>
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id='ProgramMenuFolder'>
+        <Directory Id='ApplicationProgramsFolder' Name='Cover Wall Studio'/>
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id='ApplicationProgramsFolder'>
+      <Component Id='ApplicationShortcut' Guid='*'>
+        <Shortcut
+          Id='ApplicationStartMenuShortcut'
+          Name='Cover Wall Studio'
+          Description='Pure Rust album cover extractor and 4K wallpaper studio'
+          Target='[APPLICATIONFOLDER]cover-wall.exe'
+          WorkingDirectory='APPLICATIONFOLDER'/>
+        <RemoveFolder Id='CleanUpShortCut' Directory='ApplicationProgramsFolder' On='uninstall'/>
+        <RegistryValue Root='HKCU' Key='Software\SayMaven\CoverWallStudio' Name='installed' Type='integer' Value='1' KeyPath='yes'/>
+      </Component>
+    </DirectoryRef>
+
+    <Feature
+      Id='Binaries'
+      Title='Application'
+      Description='Installs Cover Wall Studio.'
+      Level='1'
+      ConfigurableDirectory='APPLICATIONFOLDER'
+      AllowAdvertise='no'
+      Display='expand'
+      Absent='disallow'>
+      <ComponentRef Id='MainExecutable'/>
+      <ComponentRef Id='ApplicationShortcut'/>
+    </Feature>
+
+    <UIRef Id='WixUI_Minimal'/>
+  </Product>
+</Wix>

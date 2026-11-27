@@ -47,18 +47,21 @@ pub struct AppSettings {
     pub excluded_covers: Vec<String>,
 }
 
+fn default_app_data_root() -> PathBuf {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from);
+    match home {
+        Some(dir) => dir.join("Pictures").join("Cover Wall"),
+        None => PathBuf::from("."),
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
-        let default_covers = if PathBuf::from("covers/Takahashi Yu").exists() {
-            "covers/Takahashi Yu".to_owned()
-        } else {
-            "covers".to_owned()
-        };
-        let default_wallpapers = if PathBuf::from("wallpapers/Takahashi Yu").exists() {
-            "wallpapers/Takahashi Yu".to_owned()
-        } else {
-            "wallpapers".to_owned()
-        };
+        let root = default_app_data_root();
+        let default_covers = root.join("Covers").to_string_lossy().into_owned();
+        let default_wallpapers = root.join("Wallpapers").to_string_lossy().into_owned();
 
         Self {
             language: None,
