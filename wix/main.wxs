@@ -27,6 +27,9 @@
       Schedule='afterInstallInitialize'
       DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
+    <Icon Id='AppIcon.ico' SourceFile='assets\icon.ico'/>
+    <Property Id='ARPPRODUCTICON' Value='AppIcon.ico'/>
+
     <MediaTemplate EmbedCab='yes'/>
 
     <Directory Id='TARGETDIR' Name='SourceDir'>
@@ -55,6 +58,7 @@
           Name='Cover Wall Studio'
           Description='Pure Rust album cover extractor and 4K wallpaper studio'
           Target='[APPLICATIONFOLDER]cover-wall.exe'
+          Icon='AppIcon.ico'
           WorkingDirectory='APPLICATIONFOLDER'/>
         <RemoveFolder Id='CleanUpShortCut' Directory='ApplicationProgramsFolder' On='uninstall'/>
         <RegistryValue Root='HKCU' Key='Software\SayMaven\CoverWallStudio' Name='installed' Type='integer' Value='1' KeyPath='yes'/>

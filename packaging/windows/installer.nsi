@@ -12,6 +12,8 @@ RequestExecutionLevel admin
 Unicode True
 
 !define MUI_ABORTWARNING
+!define MUI_ICON "..\..\assets\icon.ico"
+!define MUI_UNICON "..\..\assets\icon.ico"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -32,6 +34,7 @@ Section "Cover Wall Studio" SecMain
 
   WriteRegStr HKLM "Software\Cover Wall Studio" "Install_Dir" "$INSTDIR"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Cover Wall Studio" "DisplayName" "Cover Wall Studio"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Cover Wall Studio" "DisplayIcon" "$INSTDIR\cover-wall.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Cover Wall Studio" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Cover Wall Studio" "Publisher" "SayMaven"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Cover Wall Studio" "UninstallString" '"$INSTDIR\uninstall.exe"'

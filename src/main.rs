@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 //! Cover Wall Studio — Pure Rust FLAC Cover Extractor & 4K Wallpaper Studio.
 
 mod extractor;
