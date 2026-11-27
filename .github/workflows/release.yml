@@ -74,7 +74,9 @@ jobs:
             }
             if ($wixBin) { $env:PATH += ";$wixBin" }
           }
-          cargo install cargo-wix --locked
+          if (-not (Get-Command cargo-wix -ErrorAction SilentlyContinue)) {
+            cargo install cargo-wix --locked
+          }
           cargo wix --nocapture --no-build -o "dist/cover-wall-${{ steps.ver.outputs.version }}-windows-x86_64.msi"
 
       - name: Upload Windows artifacts
@@ -193,7 +195,9 @@ jobs:
           mkdir -p dist/portable
           cp target/release/cover-wall LICENSE-MIT LICENSE-APACHE README.md dist/portable/
           tar -czf "dist/cover-wall-${{ steps.ver.outputs.version }}-linux-x86_64.tar.gz" -C dist/portable .
-          cargo install cargo-deb --locked
+          if ! command -v cargo-deb >/dev/null 2>&1; then
+            cargo install cargo-deb --locked
+          fi
           cargo deb --no-build -o "dist/cover-wall-${{ steps.ver.outputs.version }}-linux-amd64.deb"
 
       - name: Upload Linux artifacts
