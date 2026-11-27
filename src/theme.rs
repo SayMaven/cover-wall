@@ -1,6 +1,6 @@
 //! Perceptually uniform OKLCH color system and egui styling.
 
-use eframe::egui::{self, Color32, CornerRadius, Margin, Stroke, Style, Visuals};
+use eframe::egui::{self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, Margin, Stroke, Style, Visuals};
 
 /// A color specified in perceptual OKLCH space.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,6 +127,36 @@ impl ThemeTokens {
         style.spacing.slider_width = 160.0;
 
         ctx.set_style(style);
+    }
+
+    /// Register a Windows CJK fallback font so Japanese/Chinese/Korean album titles render cleanly.
+    pub fn install_cjk_font_fallback(&self, ctx: &egui::Context) {
+        let candidates = [
+            "C:\\Windows\\Fonts\\YuGothR.ttc",
+            "C:\\Windows\\Fonts\\YuGothM.ttc",
+            "C:\\Windows\\Fonts\\meiryo.ttc",
+            "C:\\Windows\\Fonts\\msgothic.ttc",
+            "C:\\Windows\\Fonts\\msyh.ttc",
+            "C:\\Windows\\Fonts\\malgun.ttf",
+        ];
+
+        for path in candidates {
+            if let Ok(bytes) = std::fs::read(path) {
+                let mut fonts = FontDefinitions::default();
+                fonts.font_data.insert(
+                    "cjk_fallback".to_owned(),
+                    std::sync::Arc::new(FontData::from_owned(bytes)),
+                );
+                if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
+                    family.push("cjk_fallback".to_owned());
+                }
+                if let Some(family) = fonts.families.get_mut(&FontFamily::Monospace) {
+                    family.push("cjk_fallback".to_owned());
+                }
+                ctx.set_fonts(fonts);
+                break;
+            }
+        }
     }
 }
 

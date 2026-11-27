@@ -86,6 +86,36 @@ impl AspectPreset {
     }
 }
 
+/// Background rendering mode for all wallpaper layouts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackgroundMode {
+    Solid,
+    BlurredCovers,
+    Transparent,
+}
+
+impl BackgroundMode {
+    pub const ALL: [Self; 3] = [Self::Solid, Self::BlurredCovers, Self::Transparent];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Solid => "Solid",
+            Self::BlurredCovers => "Blurred",
+            Self::Transparent => "Transparent",
+        }
+    }
+}
+
+/// Curated OKLCH-derived background palette swatches (`name`, `[r, g, b]`).
+pub const BG_PALETTE_SWATCHES: [(&str, [u8; 3]); 6] = [
+    ("Obsidian", [14, 14, 18]),
+    ("Midnight", [16, 22, 34]),
+    ("Deep Plum", [26, 16, 30]),
+    ("Forest Ink", [14, 24, 20]),
+    ("Warm Slate", [28, 26, 24]),
+    ("Chalk", [242, 242, 246]),
+];
+
 /// Parameters controlling wallpaper layout and rendering.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderParams {
@@ -99,6 +129,9 @@ pub struct RenderParams {
     pub shadow_blur: f32,
     pub shuffle: bool,
     pub seed: u64,
+    pub bg_mode: BackgroundMode,
+    pub bg_color: [u8; 3],
+    pub bg_tint_opacity: f32,
 }
 
 impl Default for RenderParams {
@@ -114,6 +147,9 @@ impl Default for RenderParams {
             shadow_blur: 10.0,
             shuffle: false,
             seed: 42,
+            bg_mode: BackgroundMode::Solid,
+            bg_color: [14, 14, 18],
+            bg_tint_opacity: 0.72,
         }
     }
 }
@@ -281,17 +317,15 @@ fn blend_rgba_clipped(dst: &mut RgbaImage, src: &RgbaImage, x: i32, y: i32) {
     imageops::overlay(dst, src, x as i64, y as i64);
 }
 
-fn create_blurred_background(
-    covers: &[&RgbaImage],
-    width: u32,
-    height: u32,
-    cols: u32,
-    rows: u32,
-    scale_factor: f32,
-) -> RgbaImage {
-    let mut bg = RgbaImage::from_pixel(width, height, Rgba([14, 14, 18, 255]));
-    let cell_w = width / cols.max(1) + 1;
-    let cell_h = height / rows.max(1) + 1;
+fn create_blurred_background(covers: &[&RgbaImage], spec: &LayoutSpec, rows: u32) -> RgbaImage {
+    let width = spec.width;
+    let height = spec.height;
+    let cols = spec.cols.max(1);
+    let rows = rows.max(1);
+    let tint_color = spec.bg_color;
+    let mut bg = RgbaImage::from_pixel(width, height, Rgba([tint_color[0], tint_color[1], tint_color[2], 255]));
+    let cell_w = width / cols + 1;
+    let cell_h = height / rows + 1;
 
     let mut idx = 0_usize;
     for r in 0..rows {
@@ -303,16 +337,31 @@ fn create_blurred_background(
         }
     }
 
-    let blur_sigma = (60.0 * scale_factor).max(4.0);
+    let blur_sigma = (60.0 * spec.scale_factor).max(4.0);
     let mut blurred = imageops::blur(&bg, blur_sigma);
-    let alpha = 185.0 / 255.0;
+    let alpha = spec.bg_tint_opacity.clamp(0.0, 1.0);
+    let tr = tint_color[0] as f32;
+    let tg = tint_color[1] as f32;
+    let tb = tint_color[2] as f32;
     for px in blurred.pixels_mut() {
-        px[0] = (px[0] as f32 * (1.0 - alpha) + 10.0 * alpha).round() as u8;
-        px[1] = (px[1] as f32 * (1.0 - alpha) + 10.0 * alpha).round() as u8;
-        px[2] = (px[2] as f32 * (1.0 - alpha) + 14.0 * alpha).round() as u8;
+        px[0] = (px[0] as f32 * (1.0 - alpha) + tr * alpha).round() as u8;
+        px[1] = (px[1] as f32 * (1.0 - alpha) + tg * alpha).round() as u8;
+        px[2] = (px[2] as f32 * (1.0 - alpha) + tb * alpha).round() as u8;
         px[3] = 255;
     }
     blurred
+}
+
+fn create_canvas_background(covers: &[&RgbaImage], spec: &LayoutSpec, rows: u32) -> RgbaImage {
+    match spec.bg_mode {
+        BackgroundMode::Solid => RgbaImage::from_pixel(
+            spec.width,
+            spec.height,
+            Rgba([spec.bg_color[0], spec.bg_color[1], spec.bg_color[2], 255]),
+        ),
+        BackgroundMode::BlurredCovers => create_blurred_background(covers, spec, rows),
+        BackgroundMode::Transparent => RgbaImage::from_pixel(spec.width, spec.height, Rgba([0, 0, 0, 0])),
+    }
 }
 
 fn prepare_tiles(covers: &[&RgbaImage], tile_size: u32, corner_radius: u32) -> Vec<RgbaImage> {
@@ -338,6 +387,9 @@ struct LayoutSpec {
     scale_factor: f32,
     angle: f32,
     tile_size: u32,
+    bg_mode: BackgroundMode,
+    bg_color: [u8; 3],
+    bg_tint_opacity: f32,
 }
 
 fn build_grid(covers: &[&RgbaImage], spec: &LayoutSpec) -> RgbaImage {
@@ -348,7 +400,7 @@ fn build_grid(covers: &[&RgbaImage], spec: &LayoutSpec) -> RgbaImage {
     let avail_h = spec.height.saturating_sub(2 * spec.margin_y + (rows - 1) * spec.gap);
     let tile_size = (avail_w / cols).min(avail_h / rows).max(8);
 
-    let mut canvas = create_blurred_background(covers, spec.width, spec.height, cols, rows, spec.scale_factor);
+    let mut canvas = create_canvas_background(covers, spec, rows);
     let total_grid_h = rows * tile_size + (rows - 1) * spec.gap;
     let start_y = (spec.height as i32 - total_grid_h as i32) / 2;
 
@@ -401,7 +453,7 @@ fn build_staggered_terrace(covers: &[&RgbaImage], spec: &LayoutSpec) -> RgbaImag
     let total_w = cols * tile_size + cols.saturating_sub(1) * spec.gap;
     let base_x = (spec.width as i32 - total_w as i32) / 2;
 
-    let mut canvas = RgbaImage::from_pixel(spec.width, spec.height, Rgba([14, 14, 18, 255]));
+    let mut canvas = create_canvas_background(covers, spec, rows);
     let tiles = prepare_tiles(covers, tile_size, spec.corner_radius);
     let (shadow, shadow_pad) = make_shadow(
         tile_size,
@@ -444,7 +496,7 @@ fn rotate_center_crop(board: &RgbaImage, target_w: u32, target_h: u32, angle_deg
     let tcx = target_w as f32 * 0.5;
     let tcy = target_h as f32 * 0.5;
 
-    let mut out = RgbaImage::from_pixel(target_w, target_h, Rgba([14, 14, 18, 255]));
+    let mut out = RgbaImage::from_pixel(target_w, target_h, Rgba([0, 0, 0, 0]));
     let raw_src = board.as_raw();
     let src_w = board.width() as i32;
     let src_h = board.height() as i32;
@@ -477,15 +529,24 @@ fn rotate_center_crop(board: &RgbaImage, target_w: u32, target_h: u32, angle_deg
                 let i01 = i00 + (src_w as usize * 4);
                 let i11 = i01 + 4;
 
+                let a00 = raw_src[i00 + 3] as f32 * w00;
+                let a10 = raw_src[i10 + 3] as f32 * w10;
+                let a01 = raw_src[i01 + 3] as f32 * w01;
+                let a11 = raw_src[i11 + 3] as f32 * w11;
+                let a_sum = a00 + a10 + a01 + a11;
+
                 let dst_i = (tx * 4) as usize;
-                for c in 0..3 {
-                    let val = raw_src[i00 + c] as f32 * w00
-                        + raw_src[i10 + c] as f32 * w10
-                        + raw_src[i01 + c] as f32 * w01
-                        + raw_src[i11 + c] as f32 * w11;
-                    row_bytes[dst_i + c] = val.round().clamp(0.0, 255.0) as u8;
+                if a_sum > 0.001 {
+                    for c in 0..3 {
+                        let val = (raw_src[i00 + c] as f32 * a00
+                            + raw_src[i10 + c] as f32 * a10
+                            + raw_src[i01 + c] as f32 * a01
+                            + raw_src[i11 + c] as f32 * a11)
+                            / a_sum;
+                        row_bytes[dst_i + c] = val.round().clamp(0.0, 255.0) as u8;
+                    }
+                    row_bytes[dst_i + 3] = a_sum.round().clamp(0.0, 255.0) as u8;
                 }
-                row_bytes[dst_i + 3] = 255;
             }
         });
 
@@ -499,7 +560,7 @@ fn build_diagonal_terrace(covers: &[&RgbaImage], spec: &LayoutSpec) -> RgbaImage
     let cols = (diag as f32 / step as f32).ceil() as u32 + 2;
     let rows = (diag as f32 / step as f32).ceil() as u32 + 2;
 
-    let mut board = RgbaImage::from_pixel(diag, diag, Rgba([14, 14, 18, 255]));
+    let mut board = RgbaImage::from_pixel(diag, diag, Rgba([0, 0, 0, 0]));
     let tiles = prepare_tiles(covers, tile_size, spec.corner_radius);
     let (shadow, shadow_pad) = make_shadow(
         tile_size,
@@ -525,7 +586,14 @@ fn build_diagonal_terrace(covers: &[&RgbaImage], spec: &LayoutSpec) -> RgbaImage
         }
     }
 
-    rotate_center_crop(&board, spec.width, spec.height, spec.angle)
+    let rotated = rotate_center_crop(&board, spec.width, spec.height, spec.angle);
+    if spec.bg_mode == BackgroundMode::Transparent {
+        return rotated;
+    }
+    let bg_rows = (spec.height as f32 / step as f32).ceil().max(1.0) as u32;
+    let mut canvas = create_canvas_background(covers, spec, bg_rows);
+    imageops::overlay(&mut canvas, &rotated, 0, 0);
+    canvas
 }
 
 /// Render a wallpaper (full resolution or scaled preview) from loaded covers.
@@ -572,6 +640,9 @@ pub fn render_wallpaper(
                 scale_factor: scale,
                 angle: 0.0,
                 tile_size: 0,
+                bg_mode: params.bg_mode,
+                bg_color: params.bg_color,
+                bg_tint_opacity: params.bg_tint_opacity,
             },
         ),
         LayoutStyle::Diagonal => {
@@ -592,6 +663,9 @@ pub fn render_wallpaper(
                     scale_factor: scale,
                     angle: params.angle,
                     tile_size,
+                    bg_mode: params.bg_mode,
+                    bg_color: params.bg_color,
+                    bg_tint_opacity: params.bg_tint_opacity,
                 },
             )
         }
@@ -611,6 +685,9 @@ pub fn render_wallpaper(
                     scale_factor: scale,
                     angle: 0.0,
                     tile_size: 0,
+                    bg_mode: params.bg_mode,
+                    bg_color: params.bg_color,
+                    bg_tint_opacity: params.bg_tint_opacity,
                 },
             )
         }
@@ -630,6 +707,9 @@ pub fn render_wallpaper(
                     scale_factor: scale,
                     angle: 0.0,
                     tile_size: 0,
+                    bg_mode: params.bg_mode,
+                    bg_color: params.bg_color,
+                    bg_tint_opacity: params.bg_tint_opacity,
                 },
             )
         }
@@ -692,6 +772,30 @@ mod tests {
         assert!(out.is_ok());
         if let Ok(img) = out {
             assert_eq!(img.dimensions(), (640, 360));
+        }
+    }
+
+    #[test]
+    fn transparent_background_preserves_alpha_in_gaps() {
+        let dummy = CoverImage {
+            path: PathBuf::from("a.png"),
+            title: "A".to_owned(),
+            square: RgbaImage::from_pixel(64, 64, Rgba([200, 100, 50, 255])),
+        };
+        let params = RenderParams {
+            style: LayoutStyle::GridLebar,
+            width: 400,
+            height: 300,
+            cols: 2,
+            gap: 24,
+            bg_mode: BackgroundMode::Transparent,
+            shadow_blur: 0.0,
+            ..Default::default()
+        };
+        let out = render_wallpaper(&[dummy], &params, None);
+        assert!(out.is_ok());
+        if let Ok(img) = out {
+            assert_eq!(img.get_pixel(0, 0)[3], 0);
         }
     }
 

@@ -13,6 +13,7 @@ lofty = "0.22"
 rand = "0.8"
 rand_chacha = "0.3"
 rayon = "1.10"
+resvg = { version = "0.45", default-features = false }
 rfd = "0.15"
 thiserror = "2.0"
 walkdir = "2.5"

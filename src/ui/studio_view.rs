@@ -2,7 +2,7 @@
 
 use eframe::egui::{self, RichText, Sense, Vec2};
 
-use crate::renderer::{AspectPreset, LayoutStyle};
+use crate::renderer::{AspectPreset, BG_PALETTE_SWATCHES, BackgroundMode, LayoutStyle};
 use crate::ui::{AppMode, CoverWallApp};
 
 pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
@@ -115,6 +115,47 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 }
                 ui.add(egui::Slider::new(&mut app.params.corner_radius, 0..=48).text("Radius (px)"));
                 ui.add(egui::Slider::new(&mut app.params.shadow_blur, 0.0..=32.0).text("Shadow"));
+
+                ui.separator();
+
+                // Background Section
+                ui.label(RichText::new("BACKGROUND").size(11.5).strong().color(app.tokens.text_muted.to_color32()));
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    for mode in BackgroundMode::ALL {
+                        if ui.selectable_label(app.params.bg_mode == mode, mode.label()).clicked() {
+                            app.params.bg_mode = mode;
+                        }
+                    }
+                });
+
+                if app.params.bg_mode != BackgroundMode::Transparent {
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        for (name, rgb) in BG_PALETTE_SWATCHES {
+                            let c = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+                            let selected = app.params.bg_color == rgb;
+                            let (rect, resp) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::click());
+                            if resp.clicked() {
+                                app.params.bg_color = rgb;
+                            }
+                            ui.painter().rect_filled(rect, 4.0, c);
+                            let stroke = if selected {
+                                egui::Stroke::new(2.0, app.tokens.accent.to_color32())
+                            } else {
+                                egui::Stroke::new(1.0, app.tokens.border_subtle.to_color32())
+                            };
+                            ui.painter().rect_stroke(rect, 4.0, stroke, egui::StrokeKind::Outside);
+                            resp.on_hover_text(name);
+                        }
+                        ui.color_edit_button_srgb(&mut app.params.bg_color);
+                    });
+                }
+
+                if app.params.bg_mode == BackgroundMode::BlurredCovers {
+                    ui.add_space(4.0);
+                    ui.add(egui::Slider::new(&mut app.params.bg_tint_opacity, 0.0..=1.0).text("Tint Opacity"));
+                }
 
                 ui.separator();
 
@@ -231,8 +272,13 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                                     egui::pos2(rect.min.x, img_rect.max.y + 2.0),
                                     rect.max,
                                 );
-                                let short_title: String = cover.data.title.chars().take(10).collect();
-                                ui.painter().text(
+                                let short_title: String = if cover.data.title.chars().count() > 7 {
+                                    let head: String = cover.data.title.chars().take(6).collect();
+                                    format!("{head}…")
+                                } else {
+                                    cover.data.title.clone()
+                                };
+                                ui.painter().with_clip_rect(title_rect).text(
                                     title_rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     short_title,
@@ -349,9 +395,35 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 }
                 let size = Vec2::new(draw_w.max(64.0), draw_h.max(64.0));
                 ui.centered_and_justified(|ui| {
-                    let resp = ui.image((tex.id(), size));
+                    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+                    if app.params.bg_mode == BackgroundMode::Transparent {
+                        let cell = 14.0_f32;
+                        let c1 = egui::Color32::from_rgb(28, 28, 34);
+                        let c2 = egui::Color32::from_rgb(40, 40, 48);
+                        ui.painter().rect_filled(rect, 0.0, c1);
+                        let cols = (rect.width() / cell).ceil() as i32;
+                        let rows = (rect.height() / cell).ceil() as i32;
+                        for r in 0..rows {
+                            for c in 0..cols {
+                                if (r + c) % 2 == 1 {
+                                    let min = egui::pos2(rect.min.x + c as f32 * cell, rect.min.y + r as f32 * cell);
+                                    let max = egui::pos2(
+                                        (min.x + cell).min(rect.max.x),
+                                        (min.y + cell).min(rect.max.y),
+                                    );
+                                    ui.painter().rect_filled(egui::Rect::from_min_max(min, max), 0.0, c2);
+                                }
+                            }
+                        }
+                    }
+                    ui.painter().image(
+                        tex.id(),
+                        rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        egui::Color32::WHITE,
+                    );
                     ui.painter().rect_stroke(
-                        resp.rect,
+                        rect,
                         4.0,
                         egui::Stroke::new(1.0, app.tokens.border_subtle.to_color32()),
                         egui::StrokeKind::Outside,

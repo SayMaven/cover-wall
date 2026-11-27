@@ -49,6 +49,7 @@ pub struct CoverWallApp {
     pub tokens: ThemeTokens,
     pub mode: AppMode,
     pub banner: Option<(bool, String)>, // (is_error, message)
+    pub logo_texture: Option<TextureHandle>,
 
     // Extractor state
     pub extract_source: String,
@@ -82,6 +83,7 @@ impl CoverWallApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let tokens = ThemeTokens::default();
         tokens.apply_to_egui(&cc.egui_ctx);
+        tokens.install_cjk_font_fallback(&cc.egui_ctx);
 
         let (tx, rx) = mpsc::channel();
 
@@ -96,10 +98,17 @@ impl CoverWallApp {
             "wallpapers".to_owned()
         };
 
+        let logo_texture = crate::render_logo_rgba(64).map(|rgba| {
+            let color_img = ColorImage::from_rgba_unmultiplied([64, 64], &rgba);
+            cc.egui_ctx
+                .load_texture("app_logo", color_img, TextureOptions::LINEAR)
+        });
+
         let mut app = Self {
             tokens,
             mode: AppMode::Studio,
             banner: None,
+            logo_texture,
             extract_source: String::new(),
             extract_output: default_covers.clone(),
             extract_running: false,
@@ -424,6 +433,9 @@ impl eframe::App for CoverWallApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
+                    if let Some(logo) = &self.logo_texture {
+                        ui.image((logo.id(), egui::vec2(24.0, 24.0)));
+                    }
                     ui.label(
                         RichText::new("Cover Wall Studio")
                             .size(17.0)
