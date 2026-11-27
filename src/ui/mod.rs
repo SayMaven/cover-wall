@@ -3,7 +3,7 @@
 pub mod extractor_view;
 pub mod studio_view;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -112,6 +112,7 @@ pub struct StudioCover {
 enum WorkerEvent {
     ExtractProgress(ExtractProgress),
     ExtractDone(Result<ExtractSummary, String>),
+    ExtractThumbsLoaded(Vec<(String, RgbaImage)>),
     CoversLoaded(Vec<CoverImage>),
     PreviewReady {
         generation: u64,
@@ -134,6 +135,7 @@ pub struct CoverWallApp {
     pub extract_running: bool,
     pub extract_progress: Option<ExtractProgress>,
     pub extract_summary: Option<ExtractSummary>,
+    pub extract_thumbs: HashMap<String, TextureHandle>,
     extract_cancel: Arc<AtomicBool>,
 
     // Studio state
@@ -188,6 +190,7 @@ impl CoverWallApp {
             extract_running: false,
             extract_progress: None,
             extract_summary: None,
+            extract_thumbs: HashMap::new(),
             extract_cancel: Arc::new(AtomicBool::new(false)),
             covers_dir: saved.covers_dir.clone(),
             output_dir: saved.output_dir.clone(),
@@ -282,6 +285,7 @@ impl CoverWallApp {
         self.extract_running = true;
         self.extract_progress = None;
         self.extract_summary = None;
+        self.extract_thumbs.clear();
         self.banner = None;
         self.extract_cancel.store(false, Ordering::Relaxed);
 
@@ -459,11 +463,47 @@ impl CoverWallApp {
                                 )
                             };
                             self.banner = Some((false, msg));
+                            let thumb_paths: Vec<PathBuf> = summary
+                                .items
+                                .iter()
+                                .filter_map(|item| item.output_path.clone())
+                                .collect();
                             self.extract_summary = Some(summary);
+
+                            if !thumb_paths.is_empty() {
+                                let tx = self.tx.clone();
+                                let ctx_clone = ctx.clone();
+                                thread::spawn(move || {
+                                    let loaded = load_covers_parallel(&thumb_paths);
+                                    let thumbs: Vec<(String, RgbaImage)> = loaded
+                                        .into_iter()
+                                        .map(|c| {
+                                            let key = c.path.to_string_lossy().into_owned();
+                                            (key, resize_rgba(&c.square, 160, 160))
+                                        })
+                                        .collect();
+                                    let _ = tx.send(WorkerEvent::ExtractThumbsLoaded(thumbs));
+                                    ctx_clone.request_repaint();
+                                });
+                            }
                         }
                         Err(err) => {
                             self.banner = Some((true, err));
                         }
+                    }
+                }
+                WorkerEvent::ExtractThumbsLoaded(thumbs) => {
+                    for (key, img) in thumbs {
+                        let color_img = ColorImage::from_rgba_unmultiplied(
+                            [img.width() as usize, img.height() as usize],
+                            img.as_raw(),
+                        );
+                        let tex = ctx.load_texture(
+                            format!("extract_thumb_{key}"),
+                            color_img,
+                            TextureOptions::LINEAR,
+                        );
+                        self.extract_thumbs.insert(key, tex);
                     }
                 }
                 WorkerEvent::CoversLoaded(loaded) => {

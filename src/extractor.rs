@@ -44,6 +44,7 @@ pub enum CoverOrigin {
 pub struct ExtractItem {
     pub album: String,
     pub file_name: Option<String>,
+    pub output_path: Option<PathBuf>,
     pub origin: CoverOrigin,
     pub detail: String,
 }
@@ -248,6 +249,7 @@ pub fn run_extraction(
                     items.push(ExtractItem {
                         album: album_name,
                         file_name: Some(file_name),
+                        output_path: Some(out_path),
                         origin: CoverOrigin::Embedded,
                         detail: "Embedded FLAC picture".to_owned(),
                     });
@@ -269,6 +271,7 @@ pub fn run_extraction(
                 items.push(ExtractItem {
                     album: album_name,
                     file_name: Some(file_name),
+                    output_path: Some(out_path),
                     origin: CoverOrigin::Folder,
                     detail: folder_cover
                         .file_name()
@@ -284,6 +287,7 @@ pub fn run_extraction(
         items.push(ExtractItem {
             album: album_name,
             file_name: None,
+            output_path: None,
             origin: CoverOrigin::Missing,
             detail: flac_path.display().to_string(),
         });
