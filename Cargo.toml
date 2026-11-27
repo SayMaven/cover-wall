@@ -2,6 +2,7 @@
 name = "cover-wall"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 description = "Pure Rust album cover extractor and 4K wallpaper studio"
 
 [dependencies]
