@@ -129,33 +129,51 @@ impl ThemeTokens {
         ctx.set_style(style);
     }
 
-    /// Register a Windows CJK fallback font so Japanese/Chinese/Korean album titles render cleanly.
+    /// Register Windows CJK fallback fonts (Japanese, Chinese, Korean) so all non-Latin text renders cleanly.
     pub fn install_cjk_font_fallback(&self, ctx: &egui::Context) {
-        let candidates = [
-            "C:\\Windows\\Fonts\\YuGothR.ttc",
-            "C:\\Windows\\Fonts\\YuGothM.ttc",
-            "C:\\Windows\\Fonts\\meiryo.ttc",
-            "C:\\Windows\\Fonts\\msgothic.ttc",
-            "C:\\Windows\\Fonts\\msyh.ttc",
-            "C:\\Windows\\Fonts\\malgun.ttf",
+        let script_groups: [(&str, &[&str]); 3] = [
+            (
+                "cjk_sc",
+                &[
+                    "C:\\Windows\\Fonts\\msyh.ttc",
+                    "C:\\Windows\\Fonts\\simsun.ttc",
+                ],
+            ),
+            (
+                "cjk_jp",
+                &[
+                    "C:\\Windows\\Fonts\\YuGothR.ttc",
+                    "C:\\Windows\\Fonts\\meiryo.ttc",
+                    "C:\\Windows\\Fonts\\msgothic.ttc",
+                ],
+            ),
+            ("cjk_kr", &["C:\\Windows\\Fonts\\malgun.ttf"]),
         ];
 
-        for path in candidates {
-            if let Ok(bytes) = std::fs::read(path) {
-                let mut fonts = FontDefinitions::default();
-                fonts.font_data.insert(
-                    "cjk_fallback".to_owned(),
-                    std::sync::Arc::new(FontData::from_owned(bytes)),
-                );
-                if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
-                    family.push("cjk_fallback".to_owned());
+        let mut fonts = FontDefinitions::default();
+        let mut added = false;
+
+        for (key, paths) in script_groups {
+            for path in paths {
+                if let Ok(bytes) = std::fs::read(path) {
+                    fonts.font_data.insert(
+                        key.to_owned(),
+                        std::sync::Arc::new(FontData::from_owned(bytes)),
+                    );
+                    if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
+                        family.push(key.to_owned());
+                    }
+                    if let Some(family) = fonts.families.get_mut(&FontFamily::Monospace) {
+                        family.push(key.to_owned());
+                    }
+                    added = true;
+                    break;
                 }
-                if let Some(family) = fonts.families.get_mut(&FontFamily::Monospace) {
-                    family.push("cjk_fallback".to_owned());
-                }
-                ctx.set_fonts(fonts);
-                break;
             }
+        }
+
+        if added {
+            ctx.set_fonts(fonts);
         }
     }
 }

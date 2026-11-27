@@ -10,12 +10,13 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 const IMAGE_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "webp", "bmp"];
 
 /// Supported wallpaper layout models.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayoutStyle {
     Terasering,
     Diagonal,
@@ -51,7 +52,7 @@ impl LayoutStyle {
 }
 
 /// Output resolution preset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AspectPreset {
     Landscape4K,
     Portrait4K,
@@ -87,7 +88,7 @@ impl AspectPreset {
 }
 
 /// Background rendering mode for all wallpaper layouts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BackgroundMode {
     Solid,
     BlurredCovers,
@@ -96,14 +97,6 @@ pub enum BackgroundMode {
 
 impl BackgroundMode {
     pub const ALL: [Self; 3] = [Self::Solid, Self::BlurredCovers, Self::Transparent];
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Solid => "Solid",
-            Self::BlurredCovers => "Blurred",
-            Self::Transparent => "Transparent",
-        }
-    }
 }
 
 /// Curated OKLCH-derived background palette swatches (`name`, `[r, g, b]`).
@@ -117,7 +110,7 @@ pub const BG_PALETTE_SWATCHES: [(&str, [u8; 3]); 6] = [
 ];
 
 /// Parameters controlling wallpaper layout and rendering.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RenderParams {
     pub style: LayoutStyle,
     pub width: u32,

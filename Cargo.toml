@@ -7,7 +7,7 @@ description = "Pure Rust album cover extractor and 4K wallpaper studio"
 
 [dependencies]
 anyhow = "1.0"
-eframe = { version = "0.31", default-features = true }
+eframe = { version = "0.31", default-features = true, features = ["persistence"] }
 fast_image_resize = { version = "5.1", features = ["image"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "bmp"] }
 lofty = "0.22"
@@ -16,6 +16,9 @@ rand_chacha = "0.3"
 rayon = "1.10"
 resvg = { version = "0.45", default-features = false }
 rfd = "0.15"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sys-locale = "0.3"
 thiserror = "2.0"
 walkdir = "2.5"
 

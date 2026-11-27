@@ -1,6 +1,7 @@
 //! Cover Wall Studio — Pure Rust FLAC Cover Extractor & 4K Wallpaper Studio.
 
 mod extractor;
+mod i18n;
 mod renderer;
 mod theme;
 mod ui;

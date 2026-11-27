@@ -6,6 +6,8 @@ use crate::extractor::CoverOrigin;
 use crate::ui::{AppMode, CoverWallApp};
 
 pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
+    let t = app.language.strings();
+
     egui::CentralPanel::default()
         .frame(
             egui::Frame::new()
@@ -16,17 +18,15 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
             ui.set_max_width(860.0);
 
             ui.label(
-                RichText::new("Extract Album Covers from FLACs")
+                RichText::new(t.extract_heading)
                     .size(20.0)
                     .strong()
                     .color(app.tokens.text_primary.to_color32()),
             );
             ui.label(
-                RichText::new(
-                    "Scans FLAC tags and embedded artwork directly in Rust without FFmpeg.",
-                )
-                .size(13.0)
-                .color(app.tokens.text_muted.to_color32()),
+                RichText::new(t.extract_subtitle)
+                    .size(13.0)
+                    .color(app.tokens.text_muted.to_color32()),
             );
             ui.add_space(16.0);
 
@@ -40,25 +40,25 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                         .num_columns(3)
                         .spacing([10.0, 10.0])
                         .show(ui, |ui| {
-                            ui.label("Music Folder (FLAC)");
+                            ui.label(t.music_folder);
                             ui.add_sized(
                                 [440.0, 26.0],
                                 egui::TextEdit::singleline(&mut app.extract_source)
                                     .hint_text("e.g. E:\\Music Lossless\\Japanese\\Artists\\Takahashi yu"),
                             );
-                            if ui.button("Browse...").clicked()
+                            if ui.button(t.browse).clicked()
                                 && let Some(folder) = rfd::FileDialog::new().pick_folder()
                             {
                                 app.extract_source = folder.display().to_string();
                             }
                             ui.end_row();
 
-                            ui.label("Output Covers Folder");
+                            ui.label(t.output_covers_folder);
                             ui.add_sized(
                                 [440.0, 26.0],
                                 egui::TextEdit::singleline(&mut app.extract_output),
                             );
-                            if ui.button("Browse...").clicked()
+                            if ui.button(t.browse).clicked()
                                 && let Some(folder) = rfd::FileDialog::new().pick_folder()
                             {
                                 app.extract_output = folder.display().to_string();
@@ -70,9 +70,9 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                     ui.horizontal(|ui| {
                         let primary_btn = egui::Button::new(
                             RichText::new(if app.extract_running {
-                                "Extracting..."
+                                t.extracting
                             } else {
-                                "Start Extraction"
+                                t.start_extraction
                             })
                             .strong()
                             .color(app.tokens.text_primary.to_color32()),
@@ -86,13 +86,13 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                             app.start_extraction(ctx.clone());
                         }
 
-                        if app.extract_running && ui.button("Cancel").clicked() {
+                        if app.extract_running && ui.button(t.cancel).clicked() {
                             app.cancel_extraction();
                         }
 
                         if let Some(summary) = &app.extract_summary
                             && summary.extracted_count > 0
-                            && ui.button("Open Output in Wallpaper Studio").clicked()
+                            && ui.button(t.open_in_studio).clicked()
                         {
                             app.covers_dir = app.extract_output.clone();
                             app.mode = AppMode::Studio;
@@ -122,17 +122,14 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
 
             if let Some(summary) = &app.extract_summary {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!("Results ({} FLAC files scanned)", summary.total_flacs))
-                            .strong(),
-                    );
+                    ui.label(RichText::new(format!("{} FLAC", summary.total_flacs)).strong());
                     ui.add_space(12.0);
                     ui.label(
-                        RichText::new(format!("Extracted: {}", summary.extracted_count))
+                        RichText::new(format!("{}: {}", t.extracted_label, summary.extracted_count))
                             .color(app.tokens.success.to_color32()),
                     );
                     ui.label(
-                        RichText::new(format!("Missing: {}", summary.missing_count))
+                        RichText::new(format!("{}: {}", t.missing_label, summary.missing_count))
                             .color(app.tokens.warning.to_color32()),
                     );
                 });
@@ -183,7 +180,7 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
                     ui.label(
-                        RichText::new("Select a music folder above to scan for unique album covers.")
+                        RichText::new(t.extract_empty_hint)
                             .color(app.tokens.text_muted.to_color32()),
                     );
                 });

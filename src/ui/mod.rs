@@ -1,8 +1,10 @@
-//! Top-level egui application state and navigation.
+//! Top-level egui application state, persistence, and navigation.
 
 pub mod extractor_view;
 pub mod studio_view;
 
+use std::collections::HashSet;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,8 +13,10 @@ use std::thread;
 
 use eframe::egui::{self, ColorImage, RichText, TextureHandle, TextureOptions};
 use image::RgbaImage;
+use serde::{Deserialize, Serialize};
 
 use crate::extractor::{ExtractConfig, ExtractProgress, ExtractSummary, run_extraction};
+use crate::i18n::Language;
 use crate::renderer::{
     AspectPreset, CoverImage, LayoutStyle, RenderParams, export_wallpaper_png,
     load_covers_parallel, render_wallpaper, resize_rgba, scan_cover_paths,
@@ -20,10 +24,82 @@ use crate::renderer::{
 use crate::theme::ThemeTokens;
 
 /// Active workspace mode in the top bar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppMode {
     Studio,
     Extractor,
+}
+
+/// Persistent user preferences saved across app restarts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppSettings {
+    pub language: Option<Language>,
+    pub mode: AppMode,
+    pub extract_source: String,
+    pub extract_output: String,
+    pub covers_dir: String,
+    pub output_dir: String,
+    pub export_prefix: String,
+    pub aspect_preset: AspectPreset,
+    pub params: RenderParams,
+    pub show_cover_strip: bool,
+    pub excluded_covers: Vec<String>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        let default_covers = if PathBuf::from("covers/Takahashi Yu").exists() {
+            "covers/Takahashi Yu".to_owned()
+        } else {
+            "covers".to_owned()
+        };
+        let default_wallpapers = if PathBuf::from("wallpapers/Takahashi Yu").exists() {
+            "wallpapers/Takahashi Yu".to_owned()
+        } else {
+            "wallpapers".to_owned()
+        };
+
+        Self {
+            language: None,
+            mode: AppMode::Studio,
+            extract_source: String::new(),
+            extract_output: default_covers.clone(),
+            covers_dir: default_covers,
+            output_dir: default_wallpapers,
+            export_prefix: "wallpaper".to_owned(),
+            aspect_preset: AspectPreset::Landscape4K,
+            params: RenderParams::default(),
+            show_cover_strip: true,
+            excluded_covers: Vec::new(),
+        }
+    }
+}
+
+fn settings_file_path() -> PathBuf {
+    eframe::storage_dir("cover-wall")
+        .map(|d| d.join("settings.json"))
+        .unwrap_or_else(|| PathBuf::from(".cover-wall-settings.json"))
+}
+
+fn load_settings() -> (AppSettings, bool) {
+    let path = settings_file_path();
+    if let Ok(raw) = fs::read_to_string(&path)
+        && let Ok(parsed) = serde_json::from_str::<AppSettings>(&raw)
+    {
+        return (parsed, true);
+    }
+    (AppSettings::default(), false)
+}
+
+fn save_settings_to_disk(settings: &AppSettings) {
+    let path = settings_file_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(settings) {
+        let _ = fs::write(path, json);
+    }
 }
 
 /// A cover item displayed in the studio library strip.
@@ -47,8 +123,9 @@ enum WorkerEvent {
 /// Main application state for Cover Wall Studio.
 pub struct CoverWallApp {
     pub tokens: ThemeTokens,
+    pub language: Language,
     pub mode: AppMode,
-    pub banner: Option<(bool, String)>, // (is_error, message)
+    pub banner: Option<(bool, String)>,
     pub logo_texture: Option<TextureHandle>,
 
     // Extractor state
@@ -71,6 +148,9 @@ pub struct CoverWallApp {
     pub preview_rendering: bool,
     pub exporting: bool,
     pub show_cover_strip: bool,
+    excluded_covers: HashSet<String>,
+    has_saved_settings: bool,
+    last_saved_settings: AppSettings,
     preview_generation: u64,
     last_preview_params: Option<(RenderParams, Vec<PathBuf>)>,
 
@@ -79,24 +159,15 @@ pub struct CoverWallApp {
 }
 
 impl CoverWallApp {
-    /// Initialize the application with OKLCH styling and default paths.
+    /// Initialize the application with OKLCH styling, system language, and persisted settings.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let tokens = ThemeTokens::default();
         tokens.apply_to_egui(&cc.egui_ctx);
         tokens.install_cjk_font_fallback(&cc.egui_ctx);
 
         let (tx, rx) = mpsc::channel();
-
-        let default_covers = if PathBuf::from("covers/Takahashi Yu").exists() {
-            "covers/Takahashi Yu".to_owned()
-        } else {
-            "covers".to_owned()
-        };
-        let default_wallpapers = if PathBuf::from("wallpapers/Takahashi Yu").exists() {
-            "wallpapers/Takahashi Yu".to_owned()
-        } else {
-            "wallpapers".to_owned()
-        };
+        let (saved, has_saved_settings) = load_settings();
+        let language = saved.language.unwrap_or_else(Language::detect_system);
 
         let logo_texture = crate::render_logo_rgba(64).map(|rgba| {
             let color_img = ColorImage::from_rgba_unmultiplied([64, 64], &rgba);
@@ -104,28 +175,34 @@ impl CoverWallApp {
                 .load_texture("app_logo", color_img, TextureOptions::LINEAR)
         });
 
+        let excluded_covers: HashSet<String> = saved.excluded_covers.iter().cloned().collect();
+
         let mut app = Self {
             tokens,
-            mode: AppMode::Studio,
+            language,
+            mode: saved.mode,
             banner: None,
             logo_texture,
-            extract_source: String::new(),
-            extract_output: default_covers.clone(),
+            extract_source: saved.extract_source.clone(),
+            extract_output: saved.extract_output.clone(),
             extract_running: false,
             extract_progress: None,
             extract_summary: None,
             extract_cancel: Arc::new(AtomicBool::new(false)),
-            covers_dir: default_covers,
-            output_dir: default_wallpapers,
-            export_prefix: "wallpaper".to_owned(),
+            covers_dir: saved.covers_dir.clone(),
+            output_dir: saved.output_dir.clone(),
+            export_prefix: saved.export_prefix.clone(),
             covers: Vec::new(),
             covers_loading: false,
-            aspect_preset: AspectPreset::Landscape4K,
-            params: RenderParams::default(),
+            aspect_preset: saved.aspect_preset,
+            params: saved.params.clone(),
             preview_texture: None,
             preview_rendering: false,
             exporting: false,
-            show_cover_strip: true,
+            show_cover_strip: saved.show_cover_strip,
+            excluded_covers,
+            has_saved_settings,
+            last_saved_settings: saved,
             preview_generation: 0,
             last_preview_params: None,
             rx,
@@ -137,6 +214,41 @@ impl CoverWallApp {
         }
 
         app
+    }
+
+    fn snapshot_settings(&self) -> AppSettings {
+        let mut excluded: Vec<String> = if self.covers.is_empty() {
+            self.excluded_covers.iter().cloned().collect()
+        } else {
+            self.covers
+                .iter()
+                .filter(|c| !c.selected)
+                .map(|c| c.data.path.to_string_lossy().into_owned())
+                .collect()
+        };
+        excluded.sort();
+
+        AppSettings {
+            language: Some(self.language),
+            mode: self.mode,
+            extract_source: self.extract_source.clone(),
+            extract_output: self.extract_output.clone(),
+            covers_dir: self.covers_dir.clone(),
+            output_dir: self.output_dir.clone(),
+            export_prefix: self.export_prefix.clone(),
+            aspect_preset: self.aspect_preset,
+            params: self.params.clone(),
+            show_cover_strip: self.show_cover_strip,
+            excluded_covers: excluded,
+        }
+    }
+
+    fn persist_if_changed(&mut self) {
+        let current = self.snapshot_settings();
+        if current != self.last_saved_settings {
+            save_settings_to_disk(&current);
+            self.last_saved_settings = current;
+        }
     }
 
     pub fn reload_covers(&mut self, ctx: egui::Context) {
@@ -163,7 +275,7 @@ impl CoverWallApp {
         let source_dir = PathBuf::from(self.extract_source.trim());
         let output_dir = PathBuf::from(self.extract_output.trim());
         if self.extract_source.trim().is_empty() {
-            self.banner = Some((true, "Please select a source music folder first.".to_owned()));
+            self.banner = Some((true, self.language.strings().err_pick_source.to_owned()));
             return;
         }
 
@@ -249,7 +361,7 @@ impl CoverWallApp {
         }
         let covers = self.selected_covers();
         if covers.is_empty() {
-            self.banner = Some((true, "Select at least one cover before exporting.".to_owned()));
+            self.banner = Some((true, self.language.strings().err_select_cover_export.to_owned()));
             return;
         }
 
@@ -369,18 +481,23 @@ impl CoverWallApp {
                                 color_img,
                                 TextureOptions::LINEAR,
                             );
+                            let selected = !self
+                                .excluded_covers
+                                .contains(&data.path.to_string_lossy().into_owned());
                             StudioCover {
                                 data,
-                                selected: true,
+                                selected,
                                 thumb: Some(thumb),
                             }
                         })
                         .collect();
 
-                    if self.covers.len() >= 32 && self.params.width >= self.params.height {
-                        self.params.cols = 9;
-                    } else if self.params.width < self.params.height {
-                        self.params.cols = 4;
+                    if !self.has_saved_settings {
+                        if self.covers.len() >= 32 && self.params.width >= self.params.height {
+                            self.params.cols = 9;
+                        } else if self.params.width < self.params.height {
+                            self.params.cols = 4;
+                        }
                     }
                     self.last_preview_params = None;
                 }
@@ -422,6 +539,7 @@ impl CoverWallApp {
 impl eframe::App for CoverWallApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_worker_events(ctx);
+        let t = self.language.strings();
 
         // Top Mode Bar
         egui::TopBottomPanel::top("top_bar")
@@ -437,7 +555,7 @@ impl eframe::App for CoverWallApp {
                         ui.image((logo.id(), egui::vec2(24.0, 24.0)));
                     }
                     ui.label(
-                        RichText::new("Cover Wall Studio")
+                        RichText::new(t.app_title)
                             .size(17.0)
                             .strong()
                             .color(self.tokens.text_primary.to_color32()),
@@ -445,24 +563,34 @@ impl eframe::App for CoverWallApp {
                     ui.add_space(16.0);
 
                     let studio_active = self.mode == AppMode::Studio;
-                    if ui.selectable_label(studio_active, "Wallpaper Studio").clicked() {
+                    if ui.selectable_label(studio_active, t.tab_studio).clicked() {
                         self.mode = AppMode::Studio;
                     }
                     let extract_active = self.mode == AppMode::Extractor;
-                    if ui.selectable_label(extract_active, "Extract Covers").clicked() {
+                    if ui.selectable_label(extract_active, t.tab_extractor).clicked() {
                         self.mode = AppMode::Extractor;
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        egui::ComboBox::from_id_salt("ui_language_combo")
+                            .selected_text(self.language.short_label())
+                            .width(72.0)
+                            .show_ui(ui, |ui| {
+                                for lang in Language::ALL {
+                                    ui.selectable_value(&mut self.language, lang, lang.label());
+                                }
+                            });
+
+                        ui.add_space(8.0);
                         let selected_count = self.covers.iter().filter(|c| c.selected).count();
                         let status = if self.exporting {
-                            "Exporting 4K...".to_owned()
+                            t.status_exporting.to_owned()
                         } else if self.extract_running {
-                            "Extracting FLACs...".to_owned()
+                            t.status_extracting.to_owned()
                         } else if self.covers_loading {
-                            "Loading covers...".to_owned()
+                            t.status_loading.to_owned()
                         } else {
-                            format!("{selected_count} / {} covers active", self.covers.len())
+                            format!("{selected_count} / {}", self.covers.len())
                         };
                         ui.label(
                             RichText::new(status)
@@ -491,7 +619,7 @@ impl eframe::App for CoverWallApp {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(msg).color(self.tokens.text_primary.to_color32()));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Dismiss").clicked() {
+                            if ui.button(t.dismiss).clicked() {
                                 self.banner = None;
                             }
                         });
@@ -503,5 +631,11 @@ impl eframe::App for CoverWallApp {
             AppMode::Studio => studio_view::show(self, ctx),
             AppMode::Extractor => extractor_view::show(self, ctx),
         }
+
+        self.persist_if_changed();
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        save_settings_to_disk(&self.snapshot_settings());
     }
 }

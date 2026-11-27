@@ -6,6 +6,8 @@ use crate::renderer::{AspectPreset, BG_PALETTE_SWATCHES, BackgroundMode, LayoutS
 use crate::ui::{AppMode, CoverWallApp};
 
 pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
+    let t = app.language.strings();
+
     // Left Inspector Panel
     egui::SidePanel::left("studio_inspector")
         .resizable(false)
@@ -19,41 +21,41 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // Covers Source Section
-                ui.label(RichText::new("COVERS SOURCE").size(11.5).strong().color(app.tokens.text_muted.to_color32()));
+                ui.label(RichText::new(t.covers_source).size(11.5).strong().color(app.tokens.text_muted.to_color32()));
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.add_sized([185.0, 26.0], egui::TextEdit::singleline(&mut app.covers_dir));
-                    if ui.button("...").on_hover_text("Pick covers folder").clicked()
+                    if ui.button("...").on_hover_text(t.browse_covers_folder).clicked()
                         && let Some(folder) = rfd::FileDialog::new().pick_folder()
                     {
                         app.covers_dir = folder.display().to_string();
                         app.reload_covers(ctx.clone());
                     }
-                    if ui.button("Load").clicked() {
+                    if ui.button(t.load).clicked() {
                         app.reload_covers(ctx.clone());
                     }
                 });
 
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.button("All").clicked() {
+                    if ui.button(t.all).clicked() {
                         for c in &mut app.covers {
                             c.selected = true;
                         }
                     }
-                    if ui.button("None").clicked() {
+                    if ui.button(t.none).clicked() {
                         for c in &mut app.covers {
                             c.selected = false;
                         }
                     }
-                    ui.checkbox(&mut app.params.shuffle, "Shuffle");
-                    if app.params.shuffle && ui.button("New Seed").clicked() {
+                    ui.checkbox(&mut app.params.shuffle, t.shuffle);
+                    if app.params.shuffle && ui.button(t.new_seed).clicked() {
                         app.params.seed = app.params.seed.wrapping_add(1);
                     }
                 });
                 if app.params.shuffle {
                     ui.horizontal(|ui| {
-                        ui.label("Seed:");
+                        ui.label(t.seed);
                         ui.add(egui::DragValue::new(&mut app.params.seed).speed(1));
                     });
                 }
@@ -61,7 +63,7 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 ui.separator();
 
                 // Resolution Section
-                ui.label(RichText::new("RESOLUTION").size(11.5).strong().color(app.tokens.text_muted.to_color32()));
+                ui.label(RichText::new(t.resolution).size(11.5).strong().color(app.tokens.text_muted.to_color32()));
                 ui.add_space(4.0);
                 egui::ComboBox::from_id_salt("aspect_preset_combo")
                     .selected_text(app.aspect_preset.label())
@@ -92,7 +94,7 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 ui.separator();
 
                 // Layout Model Section
-                ui.label(RichText::new("LAYOUT MODEL").size(11.5).strong().color(app.tokens.text_muted.to_color32()));
+                ui.label(RichText::new(t.layout_model).size(11.5).strong().color(app.tokens.text_muted.to_color32()));
                 ui.add_space(4.0);
                 ui.columns(2, |cols| {
                     for (idx, style) in LayoutStyle::ALL.iter().enumerate() {
@@ -105,25 +107,30 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 });
 
                 ui.add_space(8.0);
-                ui.label(RichText::new("PARAMETERS").size(11.5).strong().color(app.tokens.text_muted.to_color32()));
+                ui.label(RichText::new(t.parameters).size(11.5).strong().color(app.tokens.text_muted.to_color32()));
                 ui.add_space(4.0);
 
-                ui.add(egui::Slider::new(&mut app.params.cols, 2..=16).text("Columns"));
-                ui.add(egui::Slider::new(&mut app.params.gap, 0..=80).text("Gap (px)"));
+                ui.add(egui::Slider::new(&mut app.params.cols, 2..=16).text(t.columns));
+                ui.add(egui::Slider::new(&mut app.params.gap, 0..=80).text(t.gap_px));
                 if app.params.style == LayoutStyle::Diagonal {
-                    ui.add(egui::Slider::new(&mut app.params.angle, -45.0..=45.0).text("Angle (°)"));
+                    ui.add(egui::Slider::new(&mut app.params.angle, -45.0..=45.0).text(t.angle_deg));
                 }
-                ui.add(egui::Slider::new(&mut app.params.corner_radius, 0..=48).text("Radius (px)"));
-                ui.add(egui::Slider::new(&mut app.params.shadow_blur, 0.0..=32.0).text("Shadow"));
+                ui.add(egui::Slider::new(&mut app.params.corner_radius, 0..=48).text(t.radius_px));
+                ui.add(egui::Slider::new(&mut app.params.shadow_blur, 0.0..=32.0).text(t.shadow));
 
                 ui.separator();
 
                 // Background Section
-                ui.label(RichText::new("BACKGROUND").size(11.5).strong().color(app.tokens.text_muted.to_color32()));
+                ui.label(RichText::new(t.background).size(11.5).strong().color(app.tokens.text_muted.to_color32()));
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     for mode in BackgroundMode::ALL {
-                        if ui.selectable_label(app.params.bg_mode == mode, mode.label()).clicked() {
+                        let label = match mode {
+                            BackgroundMode::Solid => t.bg_solid,
+                            BackgroundMode::BlurredCovers => t.bg_blurred,
+                            BackgroundMode::Transparent => t.bg_transparent,
+                        };
+                        if ui.selectable_label(app.params.bg_mode == mode, label).clicked() {
                             app.params.bg_mode = mode;
                         }
                     }
@@ -154,30 +161,30 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
 
                 if app.params.bg_mode == BackgroundMode::BlurredCovers {
                     ui.add_space(4.0);
-                    ui.add(egui::Slider::new(&mut app.params.bg_tint_opacity, 0.0..=1.0).text("Tint Opacity"));
+                    ui.add(egui::Slider::new(&mut app.params.bg_tint_opacity, 0.0..=1.0).text(t.tint_opacity));
                 }
 
                 ui.separator();
 
                 // Export Section
-                ui.label(RichText::new("EXPORT").size(11.5).strong().color(app.tokens.text_muted.to_color32()));
+                ui.label(RichText::new(t.export_section).size(11.5).strong().color(app.tokens.text_muted.to_color32()));
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.add_sized([225.0, 26.0], egui::TextEdit::singleline(&mut app.output_dir));
-                    if ui.button("...").on_hover_text("Pick export folder").clicked()
+                    if ui.button("...").clicked()
                         && let Some(folder) = rfd::FileDialog::new().pick_folder()
                     {
                         app.output_dir = folder.display().to_string();
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Prefix:");
+                    ui.label(t.prefix);
                     ui.add_sized([220.0, 24.0], egui::TextEdit::singleline(&mut app.export_prefix));
                 });
 
                 ui.add_space(8.0);
                 let export_btn = egui::Button::new(
-                    RichText::new(if app.exporting { "Exporting..." } else { "Export 4K PNG" })
+                    RichText::new(if app.exporting { t.exporting } else { t.export_4k_png })
                         .strong()
                         .color(app.tokens.text_primary.to_color32()),
                 )
@@ -191,7 +198,7 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 if ui
                     .add_enabled(
                         !app.exporting && !app.covers.is_empty(),
-                        egui::Button::new("Export Both 16:9 & 9:16").min_size(Vec2::new(280.0, 28.0)),
+                        egui::Button::new(t.export_both).min_size(Vec2::new(280.0, 28.0)),
                     )
                     .clicked()
                 {
@@ -213,15 +220,15 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     let label = if app.show_cover_strip {
-                        "Hide Cover Library"
+                        t.hide_cover_library
                     } else {
-                        "Show Cover Library"
+                        t.show_cover_library
                     };
                     if ui.button(label).clicked() {
                         app.show_cover_strip = !app.show_cover_strip;
                     }
                     ui.label(
-                        RichText::new("Click any cover to include or exclude it from the wallpaper.")
+                        RichText::new(t.cover_strip_hint)
                             .size(12.0)
                             .color(app.tokens.text_muted.to_color32()),
                     );
@@ -309,7 +316,7 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 ui.centered_and_justified(|ui| {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label("Loading covers in parallel...");
+                        ui.label(t.loading_covers);
                     });
                 });
                 return;
@@ -319,25 +326,25 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
                 ui.centered_and_justified(|ui| {
                     ui.vertical_centered(|ui| {
                         ui.label(
-                            RichText::new("No Covers Loaded")
+                            RichText::new(t.no_covers_loaded)
                                 .size(18.0)
                                 .strong()
                                 .color(app.tokens.text_primary.to_color32()),
                         );
                         ui.add_space(6.0);
                         ui.label(
-                            RichText::new("Select an existing covers folder or extract artwork from your FLAC library.")
+                            RichText::new(t.no_covers_hint)
                                 .color(app.tokens.text_muted.to_color32()),
                         );
                         ui.add_space(14.0);
                         ui.horizontal(|ui| {
-                            if ui.button("Browse Covers Folder...").clicked()
+                            if ui.button(t.browse_covers_folder).clicked()
                                 && let Some(folder) = rfd::FileDialog::new().pick_folder()
                             {
                                 app.covers_dir = folder.display().to_string();
                                 app.reload_covers(ctx.clone());
                             }
-                            if ui.button("Go to Extract Covers").clicked() {
+                            if ui.button(t.go_to_extract).clicked() {
                                 app.mode = AppMode::Extractor;
                             }
                         });
@@ -349,7 +356,8 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new(format!(
-                        "Live Preview — {} ({} × {})",
+                        "{} — {} ({} × {})",
+                        t.live_preview,
                         app.params.style.label(),
                         app.params.width,
                         app.params.height
@@ -432,7 +440,7 @@ pub fn show(app: &mut CoverWallApp, ctx: &egui::Context) {
             } else {
                 ui.centered_and_justified(|ui| {
                     ui.label(
-                        RichText::new("Select at least one cover below to preview.")
+                        RichText::new(t.select_one_to_preview)
                             .color(app.tokens.text_muted.to_color32()),
                     );
                 });
