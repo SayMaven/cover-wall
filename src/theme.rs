@@ -129,8 +129,9 @@ impl ThemeTokens {
         ctx.set_style(style);
     }
 
-    /// Register Windows CJK fallback fonts (Japanese, Chinese, Korean) so all non-Latin text renders cleanly.
+    /// Register system CJK fallback fonts (Chinese, Japanese, Korean) on Windows, macOS, and Linux.
     pub fn install_cjk_font_fallback(&self, ctx: &egui::Context) {
+        #[cfg(target_os = "windows")]
         let script_groups: [(&str, &[&str]); 3] = [
             (
                 "cjk_sc",
@@ -148,6 +149,51 @@ impl ThemeTokens {
                 ],
             ),
             ("cjk_kr", &["C:\\Windows\\Fonts\\malgun.ttf"]),
+        ];
+
+        #[cfg(target_os = "macos")]
+        let script_groups: [(&str, &[&str]); 3] = [
+            (
+                "cjk_sc",
+                &[
+                    "/System/Library/Fonts/PingFang.ttc",
+                    "/System/Library/Fonts/STHeiti Light.ttc",
+                ],
+            ),
+            (
+                "cjk_jp",
+                &[
+                    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+                ],
+            ),
+            (
+                "cjk_kr",
+                &["/System/Library/Fonts/AppleSDGothicNeo.ttc"],
+            ),
+        ];
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        let script_groups: [(&str, &[&str]); 3] = [
+            (
+                "cjk_sc",
+                &[
+                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+                    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+                ],
+            ),
+            (
+                "cjk_jp",
+                &[
+                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+                ],
+            ),
+            (
+                "cjk_kr",
+                &["/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"],
+            ),
         ];
 
         let mut fonts = FontDefinitions::default();
